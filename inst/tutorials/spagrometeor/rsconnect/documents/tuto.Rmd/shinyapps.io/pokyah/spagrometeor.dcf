@@ -1,0 +1,12 @@
+name: spagrometeor
+title: spagrometeor
+username:
+account: pokyah
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 502636
+bundleId: 1631941
+url: https://pokyah.shinyapps.io/spagrometeor/
+when: 1539098650.25874
+asMultiple: FALSE
+asStatic: FALSE

@@ -24,18 +24,21 @@ runtime: shiny_prerendered
 
 # devtools::install_github("r-spatial/sf")
 
+library(devtools)
 library(learnr)
 library(dplyr)
 library(raster)
 library(sf)
 library(fontawesome)
 library(leaflet)
-library(BelgiumMaps.Admin)
 library(mlr)
 library(ggplot2)
 
-rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
-rawdata = agrometAPI::type_data(rawdata)
+rawdata <- readRDS("rawdata.rds")
+
+# rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+# rawdata = agrometAPI::type_data(rawdata)
+
 mydataset = rawdata %>%
   dplyr::filter(!is.na(mtime)) %>%
   dplyr::filter(sid != 38 & sid != 41) %>%
@@ -73,11 +76,12 @@ mydataset = sf::st_as_sf(mydataset,
 mydataset = sf::st_transform(mydataset, crs = raster.crs)
 sf::st_crs(mydataset)
 
-data(BE_OSM_ADMIN)
-bel = sf::st_as_sf(BE_OSM_ADMIN)
-level4 = bel %>% filter(tag.admin.level == 4)
-wallonia = level4 %>% filter(tag.name.fr == "Wallonie")
-sf::st_crs(wallonia)
+# the paths of the server to load GADM files have changed. manually downloading data from the site and importing https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds
+
+belgium = readRDS("./gadm36_BEL_2_sf.rds")
+wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
+wallonia = sf::st_transform(wallonia, 4326)
+
 # croping (masking)
 wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
 plot(wal.DEM)
@@ -364,8 +368,11 @@ devtools::install_github("pokyah/agrometAPI", ref = "master", force=TRUE)
 
 
 ```{r agrometAPIcall, exercise=TRUE}
-rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
-rawdata = agrometAPI::type_data(rawdata)
+# getting data from API (requires a token)
+#rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+#rawdata = agrometAPI::type_data(rawdata)
+# if you don't have a token, you can use the cached data
+rawdata = readRDS("rawdata.rds")
 ```
 
 ###  filter & preview
@@ -426,16 +433,24 @@ sf::st_crs(mydataset)
 Masking the DEM raster with the extent of Wallonia. Let's download the boundary of Wallonia from OSM !
 
 ```{r walOSM, exercise = TRUE}
-# get admin boundaries of Wallonia with https://github.com/pokyah/BelgiumMaps.Admin
-library(BelgiumMaps.Admin)
-data(BE_OSM_ADMIN)
-bel = sf::st_as_sf(BE_OSM_ADMIN)
-level4 = bel %>% filter(tag.admin.level == 4)
-wallonia = level4 %>% filter(tag.name.fr == "Wallonie")
-sf::st_crs(wallonia)
+# the paths of the server to load GADM files have changed. manually downloading data from the site and importing https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds
+belgium = readRDS("./gadm36_BEL_2_sf.rds")
+wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
+wallonia = sf::st_transform(wallonia, 4326)
+
 # croping (masking)
 wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
 plot(wal.DEM)
+
+##### below is the old code that works with automatic download
+# belgium = raster::getData("GADM", country = "BE", level = 2)
+# # coercing to sf class for easier data manipulation
+# belgium = sf::st_as_sf(belgium)
+# # extract Wallonia
+# wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
+# # croping (masking)
+# wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
+# plot(wal.DEM)
 ```
 
 
@@ -740,6 +755,11 @@ Check my [curated list of free tools and datasets on my blog](https://pokyah.git
 ## ABOUT
 
 This presentation was built using `learnr`, a package to create your own interactive tutorials
+
+It was deployed to shinyapps.io using the followin commands
+```
+devtools::install_github("rstudio/packrat")
+library(devtools)
 
 You might also be interested in :
 
