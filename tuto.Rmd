@@ -1,0 +1,748 @@
+---
+title: "spagrometeoR"
+output:
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
+runtime: shiny_prerendered
+---
+
+<style>
+.tutorial-exercise-output pre{
+    color:#43d615;
+    background-color:black;
+    border-radius: 10px;
+    padding: 20px;}
+}
+
+.ace_editor{
+    font-size:16px !important;
+}
+</style>
+
+```{r setup, include=FALSE}
+
+# devtools::install_github("r-spatial/sf")
+
+library(learnr)
+library(dplyr)
+library(raster)
+library(sf)
+library(fontawesome)
+library(leaflet)
+library(BelgiumMaps.Admin)
+library(mlr)
+library(ggplot2)
+
+rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+rawdata = agrometAPI::type_data(rawdata)
+mydataset = rawdata %>%
+  dplyr::filter(!is.na(mtime)) %>%
+  dplyr::filter(sid != 38 & sid != 41) %>%
+  dplyr::filter(!is.na(from)) %>%
+  dplyr::filter(!is.na(to)) %>%
+  dplyr::filter(poste != "China") %>%
+  dplyr::filter(!type_name %in% c("PS2000","PESSL","BODATA","Sencrop","netdl1000","SYNOP")) %>%
+  dplyr::select(c(sid, poste, longitude, latitude, altitude, mtime, tsa))
+
+# declaration of the function to build a DEM using
+build.DEM <- function(country) {
+  # Get the Belgium DEM using raster package
+  elevation = raster::getData("alt", country = country, mask = TRUE)
+  names(elevation) = "altitude"
+  # compute the slope from the elevation
+  #slope <- raster::terrain(elevation, opt="slope", unit="degrees")
+  # compute the aspect from the elevation
+  #aspect <- raster::terrain(elevation, opt="aspect", unit="degrees")
+  # stack the rasters
+  #topo <- stack(elevation, slope, aspect)
+  # Return the stack of rasters
+  return(elevation)
+} 
+# pass country ISO code to build its (low res) DEM and store the raster stack in the bel.DEM var
+bel.DEM = build.DEM("BE")
+plot(bel.DEM)
+
+raster.crs = raster::crs(bel.DEM ,asText = TRUE)
+raster.crs
+
+mydataset = sf::st_as_sf(mydataset, 
+  coords = c("longitude", "latitude"),
+  crs = 4326)
+
+mydataset = sf::st_transform(mydataset, crs = raster.crs)
+sf::st_crs(mydataset)
+
+data(BE_OSM_ADMIN)
+bel = sf::st_as_sf(BE_OSM_ADMIN)
+level4 = bel %>% filter(tag.admin.level == 4)
+wallonia = level4 %>% filter(tag.name.fr == "Wallonie")
+sf::st_crs(wallonia)
+# croping (masking)
+wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
+plot(wal.DEM)
+# # downloading admin boundaries of Wallonia (other method)
+# belgium = raster::getData("GADM", country = "BE", level = 2)
+# # coercing to sf class for easier data manipulation
+# belgium = sf::st_as_sf(belgium)
+# # extract Wallonia
+# wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
+# # croping (masking)
+# wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
+# plot(wal.DEM)
+
+# projected for resolution
+wallonia.proj = st_transform(wallonia, crs = 3812)
+# tranform to .sp class
+wallonia.sp = as(wallonia.proj, "Spatial")
+# Make a rectangular grid over your SpatialPolygonsDataFrame
+ grid.sp = sp::makegrid(x = wallonia.sp, cellsize = 5000,
+    pretty = TRUE)
+# Convert the grid to SpatialPoints and subset these points by the polygon.
+ grid.pts <- sp::SpatialPoints(coords = grid.sp, 
+                         proj4string = sp::CRS(proj4string(wallonia.sp)))
+# find all points in `grd.pts` that fall within `wallonia`
+ grid.pts.in <- grid.pts[wallonia.sp, ]
+# transfomm to grid
+ sp::gridded(grid.pts.in) = TRUE
+# convert to sf
+ grid = sf::st_as_sf(grid.pts.in)
+# reproject to EPSG = 4326
+ grid = sf::st_transform(grid, crs = st_crs(wallonia))
+# plot the grid
+ plot(grid)
+ 
+# grid extraction 
+extracted <- raster::extract(
+  wal.DEM,
+  as(grid,"Spatial"),
+  fun = mean,
+  na.rm = TRUE,
+  df = TRUE
+)
+extraction <- dplyr::bind_cols(grid, extracted)
+extraction <- dplyr::filter(extraction, !is.na(altitude))
+head(extraction)
+plot(extraction)
+ 
+# leaflet
+ elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(wal.DEM$altitude),
+  na.color = "transparent")
+temperature.pal <- colorNumeric(reverse = TRUE, "RdBu", domain=mydataset$tsa,
+  na.color = "transparent")
+responsiveness = "\'<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\'"
+
+map <- leaflet() %>% 
+     addProviderTiles(
+         providers$OpenStreetMap.BlackAndWhite, group = "B&W") %>%
+     addProviderTiles(
+         providers$Esri.WorldImagery, group = "Satelitte") %>%
+     addRasterImage(
+         wal.DEM, group = "Elevation", colors = elevation.pal, opacity = 0.8) %>%
+     addPolygons(
+         data = wallonia, group = "Admin", color = "#444444", weight = 1, smoothFactor = 0.5,
+         opacity = 1, fillOpacity = 0.1, fillColor = "grey") %>%
+     addCircleMarkers(
+         data = mydataset,
+         group = "Stations",
+         color = ~temperature.pal(tsa),
+         stroke = FALSE,
+        fillOpacity = 0.8,
+         label = ~htmltools::htmlEscape(as.character(tsa))) %>%
+    addCircleMarkers(
+        data = grid,
+        group = "Grid",
+        radius = 2,
+        color = "grey",
+        stroke = TRUE, fillOpacity = 1) %>%
+    addLegend(
+      values = values(wal.DEM), group = "Elevation",
+      position = "bottomright", pal = elevation.pal,
+      title = "Elevation (m)") %>%
+     addLayersControl(
+         baseGroups = c("B&W", "Satelitte"),
+         overlayGroups = c("Elevation", "Admin", "Stations", "Grid"),
+         options = layersControlOptions(collapsed = TRUE)
+     ) %>%
+     hideGroup(c("Slope", "Aspect")) %>%
+     addEasyButton(easyButton(
+         icon = "fa-crosshairs", title = "Locate Me",
+         onClick = JS("function(btn, map){ map.locate({setView: true}); }"))) %>%
+     htmlwidgets::onRender(paste0("
+       function(el, x) {
+       $('head').append(",responsiveness,");
+       }"))
+map
+
+
+# extract the lon and lat from the sf geometry
+coords = data.frame(st_coordinates(mydataset))
+# attributing our original dataset to another var (to avoid overwriting)
+ourTask = mydataset
+# converting our dataset from sf to simple df
+st_geometry(ourTask) <- NULL
+# joining the coords
+ourTask = dplyr::bind_cols(ourTask, coords)
+# Dropping the non-explanatory features
+ourTask = dplyr::select(ourTask, -c(sid, poste, mtime))
+# defining our taks
+ourTask = mlr::makeRegrTask(id = "FOSS4G_example", data = ourTask, target = "tsa")
+# checking our data
+head(mlr::getTaskData(ourTask))
+
+# Defining our learners
+ourLearners = mlr::makeLearners(
+  cls = c("regr.lm", "regr.fnn", "regr.nnet"),
+  ids = c("linearRegression", "Fast Nearest Neighbours", "Neural Network")
+)
+
+# Defining our learners
+ourResamplingStrategy = mlr::makeResampleDesc("LOO")
+
+# performing the benchmark of our learners on our task
+ourbenchmark = mlr::benchmark(
+  learners = ourLearners,
+  tasks = ourTask,
+  resamplings = ourResamplingStrategy,
+  measures = list(rmse)
+)
+
+performances = mlr::getBMRAggrPerformances(bmr = ourbenchmark, as.df = TRUE)
+performances
+
+# Vizualizing the benchamrk result
+library(ggplot2)
+plotBMRBoxplots(
+  bmr = ourbenchmark,
+  measure = rmse,
+  order.lrn = mlr::getBMRLearnerIds(ourbenchmark)) +
+  aes(color = learner.id)
+
+# extract the lon and lat from the sf geometry
+coords = data.frame(st_coordinates(extraction))
+# attributing our original dataset to another var (to avoid overwriting)
+ourPredictionGrid = extraction
+# converting our dataset from sf to simple df
+st_geometry(ourPredictionGrid) <- NULL
+# joining the coords
+ourPredictionGrid = dplyr::bind_cols(ourPredictionGrid, coords)
+
+# training the neural net on the dataset
+ourModel = mlr::train(
+  learner = mlr::getBMRLearners(bmr = ourbenchmark)[[1]],
+  task = ourTask)
+
+# using our model to make the prediction
+ourPrediction = predict(
+  object = ourModel,
+  newdata = ourPredictionGrid
+)$data
+
+# injecting the predicted values in the prediction grid
+ourPredictedGrid = dplyr::bind_cols(ourPredictionGrid, ourPrediction)
+
+# making the predicted grid a spatial object again
+ourPredictedGrid = sf::st_as_sf(ourPredictedGrid, coords = c("X", "Y"), crs = 4326)
+plot(ourPredictedGrid)
+
+# injecting data in polygons for better rendering
+# https://r-spatial.github.io/sf/reference/st_make_grid.html
+
+sfgrid = st_sf(sf::st_make_grid(x = wallonia.proj,  cellsize = 5000, what = "polygons"))
+ourPredictedGrid = sf::st_transform(ourPredictedGrid, crs = 3812)
+ourPredictedGrid = sf::st_join(sfgrid, ourPredictedGrid)
+ourPredictedGrid = ourPredictedGrid %>%
+  dplyr::filter(!is.na(response))
+
+# back to 4326 for leaflet
+ourPredictedGrid = sf::st_transform(ourPredictedGrid, 4326)
+
+# adding to our map
+map2 = map %>% 
+  addPolygons(
+    data = ourPredictedGrid,
+    group = "Predictions",
+    color = ~temperature.pal(response),
+    stroke = FALSE,
+    fillOpacity = 0.9,
+    label = ~htmltools::htmlEscape(as.character(response))) %>%
+  addLegend(
+    values = ourPredictedGrid$response,
+    group = "Predictions",
+    position = "bottomleft", pal = temperature.pal,
+    title = "predicted T (°C)") %>%
+  addLayersControl(
+         baseGroups = c("B&W", "Satelitte"),
+         overlayGroups = c("Elevation", "Admin", "Grid", "Predictions", "Stations"),
+         options = layersControlOptions(collapsed = TRUE)
+     )
+
+```
+
+## WELCOME ! 
+
+Welcome to this Session! 
+
+> Why and How to use R as an opensource GIS : The AGROMET project usecase
+
+presented by *Thomas Goossens*
+
+<center>
+`r fontawesome::fa("linkedin", height = "25px", fill = "#75aadb")` 
+`r fontawesome::fa("github", height = "25px", fill = "#75aadb")`  
+`r fontawesome::fa("envelope", height = "25px", fill = "#75aadb")`
+</center>
+
+```{r foss4gbelogo, echo = FALSE, out.width = "35%"}
+knitr::include_graphics("images/foss4gbe.svg")
+```
+
+```{r crawlogo, echo = FALSE, out.width = "35%"}
+knitr::include_graphics("images/craw_fr.png")
+```
+
+## PROJECT
+
+> A very short introduction to the project
+
+### What? 
+
+`r fontawesome::fa("bullseye", height = "50px", fill = "#75aadb")`
+Providing __hourly__ gridded weather data @ __1km² resolution__ for Wallonia
+
+### Why? 
+
+`r fontawesome::fa("leaf", height = "50px", fill = "#75aadb")`
+
+Feeding decision tools for agricultural warning systems based on crop monitoring models ([EU directive for Sustainable use of pesticides](https://ec.europa.eu/food/plant/pesticides/sustainable_use_pesticides_en))
+
+### How? 
+
+`r fontawesome::fa("th", height = "50px", fill = "#75aadb")`
+__spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather Station Network
+
+## GIS BUILDING BLOCKS
+
+### data 
+
+`r fa("cubes" , height = "50px", fill = "#75aadb")`
+
+* Weather data from the stations
+* explanatory variables (DEM, land cover, etc)
+* interpolation grid
+* map backgrounds
+
+### Tools
+
+`r fa("wrench" , height = "50px", fill = "#75aadb")`
+
+* API query
+* Data manipulation
+* interpolation algorithms (linear regression, ANN, kriging)
+* algorithms output benchmarking
+* dataviz/mapping tools
+
+## WHY R ?
+
+`r fa("r-project" , height = "50px", fill = "#75aadb")`
+* Already used by our weather specialist partners : 
+[RMI](www/Poster_Eumetnet_2017.pdf) + [KNMI](http://dailymeteo.org/Sluiter2014)
+* [Increased popularity among tech companies](https://thenextweb.com/offers/2018/03/28/tech-giants-are-harnessing-r-programming-learn-it-and-get-hired-with-this-complete-training-bundle/)
+* [Impressive growth](https://stackoverflow.blog/2017/10/10/impressive-growth-r/) and active community
+
+## API DATA
+
+> Retrieving data available through an API
+
+### install R package for agromet API
+
+```{r installAPI, exercise=TRUE}
+devtools::install_github("pokyah/agrometAPI", ref = "master", force=TRUE)
+```
+
+###  Call the agromet API
+
+
+```{r agrometAPIcall, exercise=TRUE}
+rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+rawdata = agrometAPI::type_data(rawdata)
+```
+
+###  filter & preview
+ins
+```{r filter, exercise=TRUE}
+library(dplyr)
+mydataset = rawdata %>%
+  dplyr::filter(!is.na(mtime)) %>%
+  dplyr::filter(sid != 38 & sid != 41) %>%
+  dplyr::filter(!is.na(from)) %>%
+  dplyr::filter(!is.na(to)) %>%
+  dplyr::filter(poste != "China") %>%
+  dplyr::filter(!type_name %in% c("PS2000","PESSL","BODATA","Sencrop","netdl1000","SYNOP")) %>%
+  dplyr::select(c(sid, poste, longitude, latitude, altitude, mtime, tsa))
+
+mydataset
+```
+
+## DEM
+
+### Downloading
+```{r DEMraster, exercise=TRUE}
+# loading the raster package
+library(raster)
+# declaration of the function to build a DEM using
+build.DEM <- function(country) {
+  # Get the Belgium DEM using raster package
+  elevation = raster::getData("alt", country = country, mask = TRUE)
+  names(elevation)= "altitude"
+  # compute the slope from the elevation
+  #slope <- raster::terrain(elevation, opt="slope", unit="degrees")
+  # compute the aspect from the elevation
+  #aspect <- raster::terrain(elevation, opt="aspect", unit="degrees")
+  # stack the rasters
+  #topo <- stack(elevation, slope, aspect)
+  # Return the stack of rasters
+  return(elevation)
+} 
+# pass country ISO code to build its (low res) DEM and store the raster stack in the bel.DEM var
+bel.DEM = build.DEM("BE")
+plot(bel.DEM)
+```
+
+### Reprojecting
+```{r DEMCRS, exercise = TRUE}
+raster.crs = raster::crs(bel.DEM ,asText = TRUE)
+raster.crs
+
+mydataset = sf::st_as_sf(mydataset, 
+  coords = c("longitude", "latitude"),
+  crs = 4326)
+
+mydataset = sf::st_transform(mydataset, crs = raster.crs)
+sf::st_crs(mydataset)
+```
+
+### Croping  `r fa("crop")` 
+Masking the DEM raster with the extent of Wallonia. Let's download the boundary of Wallonia from OSM !
+
+```{r walOSM, exercise = TRUE}
+# get admin boundaries of Wallonia with https://github.com/pokyah/BelgiumMaps.Admin
+library(BelgiumMaps.Admin)
+data(BE_OSM_ADMIN)
+bel = sf::st_as_sf(BE_OSM_ADMIN)
+level4 = bel %>% filter(tag.admin.level == 4)
+wallonia = level4 %>% filter(tag.name.fr == "Wallonie")
+sf::st_crs(wallonia)
+# croping (masking)
+wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
+plot(wal.DEM)
+```
+
+
+## GRID 
+`r fa("grip-horizontal")` 
+* inspired from [`r fa("stack-overflow")`](https://stackoverflow.com/questions/43436466/create-grid-in-r-for-kriging-in-gstat/43444232)
+* requires the good old `sp` library
+
+### Building
+```{r grid, exercise = TRUE}
+# projected for resolution
+wallonia.proj = st_transform(wallonia, crs = 3812)
+# tranform to .sp class
+wallonia.sp = as(wallonia.proj, "Spatial")
+# Make a rectangular grid over your SpatialPolygonsDataFrame
+ grid.sp = sp::makegrid(x = wallonia.sp, cellsize = 5000,
+    pretty = TRUE)
+# Convert the grid to SpatialPoints and subset these points by the polygon.
+ grid.pts <- sp::SpatialPoints(coords = grid.sp, 
+                         proj4string = sp::CRS(proj4string(wallonia.sp)))
+# find all points in `grd.pts` that fall within `wallonia`
+ grid.pts.in <- grid.pts[wallonia.sp, ]
+# transfomm to grid
+ sp::gridded(grid.pts.in) = TRUE
+# convert to sf
+ grid = sf::st_as_sf(grid.pts.in)
+# reproject to EPSG = 4326
+ grid = sf::st_transform(grid, crs = st_crs(wallonia))
+# plot the grid
+ plot(grid)
+```
+
+### Exctrating data
+
+> extracting raster data with grid object and adding extracted features to attributes table
+
+```{r grid-extract, exercise = TRUE}
+# extracting elevation data at the locations of our grid
+extracted <- raster::extract(
+  wal.DEM,
+  as(grid,"Spatial"),
+  fun = mean,
+  na.rm = TRUE,
+  df = TRUE
+)
+extraction <- dplyr::bind_cols(grid, extracted)
+extraction <- dplyr::filter(extraction, !is.na(altitude))
+head(extraction)
+plot(extraction)
+```
+
+## VISUALIZATION
+
+>  make our spatial data intelligible by mapping it using `leaflet`
+
+### Leaflet map
+```{r, map, exercise = TRUE}
+elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(wal.DEM$altitude),
+  na.color = "transparent")
+temperature.pal <- colorNumeric(reverse = TRUE, "RdBu", domain=mydataset$tsa,
+  na.color = "transparent")
+responsiveness = "\'<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\'"
+
+map =  leaflet() %>% 
+     addProviderTiles(
+         providers$OpenStreetMap.BlackAndWhite, group = "B&W") %>%
+     addProviderTiles(
+         providers$Esri.WorldImagery, group = "Satelitte") %>%
+     addRasterImage(
+         wal.DEM, group = "Elevation", colors = elevation.pal, opacity = 0.8) %>%
+     addPolygons(
+         data = wallonia, group = "Admin", color = "#444444", weight = 1, smoothFactor = 0.5,
+         opacity = 1, fillOpacity = 0.1, fillColor = "grey") %>%
+     addCircleMarkers(
+         data = mydataset,
+         group = "Stations",
+         color = ~temperature.pal(tsa),
+         stroke = FALSE,
+        fillOpacity = 0.8,
+         label = ~htmltools::htmlEscape(as.character(tsa))) %>%
+    addCircleMarkers(
+        data = grid,
+        group = "Grid",
+        radius = 2,
+        color = "grey",
+        stroke = TRUE, fillOpacity = 1) %>%
+    addLegend(
+      values = values(wal.DEM), group = "Elevation",
+      position = "bottomright", pal = elevation.pal,
+      title = "Elevation (m)") %>%
+     addLayersControl(
+         baseGroups = c("B&W", "Satelitte"),
+         overlayGroups = c("Elevation", "Admin", "Stations", "Grid"),
+         options = layersControlOptions(collapsed = TRUE)
+     ) %>%
+     hideGroup(c("Slope", "Aspect")) %>%
+     addEasyButton(easyButton(
+         icon = "fa-crosshairs", title = "Locate Me",
+         onClick = JS("function(btn, map){ map.locate({setView: true}); }"))) %>%
+     htmlwidgets::onRender(paste0("
+       function(el, x) {
+       $('head').append(",responsiveness,");
+       }"))
+map
+```
+
+## INTERPOLATION
+
+> Spatialization or spatial interpolation creates a continuous surface from values measured at discrete locations to __predict__ values at any location in the interest zone with the __best accuracy__.
+
+### 2 approaches 
+
+> To predict values at any location : 
+
+1. ~~physical atmospherical models~~ (not straight forward to develop an explicit physical model describing how the output data can be derived from the input data)
+
+2. __supervised machine learning regression algorithms__ that given a set of continuous data, find the best relationship that represents the set of continuous data (common approach largely discussed in the academic litterature)
+
+### Supervised Machine learning
+
+> We will go through a very simple example of machine learning usecase
+
+### Machine Learning definition
+
+From machinelearningmastery.com :
+
+> Supervised learning is where you have input variables (x) and an output variable (Y) and you use an algorithm to learn the mapping function from the input to the output : Y = f(X)
+The goal is to approximate the mapping function so well that when you have new input data (x), you can predict the output variables (Y) for that data.
+It is called supervised learning because the process of an algorithm learning from the training dataset can be thought of as a teacher supervising the learning process
+
+### MLR library
+
+[](https://mlr-org.github.io/mlr/reference/figures/logo_navbar.png)
+[go to mlr website for full details](https://mlr-org.github.io/mlr/index.html)
+
+`mlr` is a `r fa("r-project")` library that offers a standardized interface for all its machine learning algorithms. 
+
+### the idea
+
+* For each hourly set of temperature records (30 stations) ...
+* run a benchmark experiment where different regression learning algorithms are used to learn ...
+* from various regression tasks (i.e. datasets with different combinations of explanatory variables + the target weather parameter) ...
+* with the aim to compare and rank the performances of combinations of algorithm + used explanatory variables using a cross validation resampling strategy (LOOCV)
+
+### Defining our ML task
+```{r taskMLR, exercise = TRUE}
+# loading the mlr library
+library(mlr)
+# extract the lon and lat from the sf geometry
+coords = data.frame(st_coordinates(mydataset))
+# attributing our original dataset to another var (to avoid overwriting)
+ourTask = mydataset
+# converting our dataset from sf to simple df
+st_geometry(ourTask) <- NULL
+# joining the coords
+ourTask = dplyr::bind_cols(ourTask, coords)
+# Dropping the non-explanatory features
+ourTask = dplyr::select(ourTask, -c(sid, poste, mtime))
+# defining our taks
+ourTask = mlr::makeRegrTask(id = "FOSS4G_example", data = ourTask, target = "tsa")
+# checking our data
+head(mlr::getTaskData(ourTask))
+```
+
+### Defining our learners (learning algorithms)
+```{r learnersMLR, exercise = TRUE}
+# Defining our learners
+ourLearners = mlr::makeLearners(
+  cls = c("regr.lm", "regr.fnn", "regr.nnet"),
+  ids = c("linearRegression", "Fast Nearest Neighbours", "Neural Network")
+)
+```
+
+### Defining our resampling strategy
+```{r resamplMLR, exercise = TRUE}
+# Defining our learners
+ourResamplingStrategy = mlr::makeResampleDesc("LOO")
+```
+
+### Performing our benchmark
+
+> Let's find which learner provides the best results (the lowest RMSE) for our specific spatial interpolation problem
+
+```{r bmrMLR, exercise = TRUE, message= FALSE}
+# performing the benchmark of our learners on our task
+ourbenchmark = mlr::benchmark(
+  learners = ourLearners,
+  tasks = ourTask,
+  resamplings = ourResamplingStrategy,
+  measures = list(rmse)
+)
+
+performances = mlr::getBMRAggrPerformances(bmr = ourbenchmark, as.df = TRUE)
+performances
+
+# Vizualizing the benchamrk result
+library(ggplot2)
+plotBMRBoxplots(
+  bmr = ourbenchmark,
+  measure = rmse,
+  order.lrns = mlr::getBMRLearnerIds(ourbenchmark)) +
+  aes(color = learner.id)
+```
+
+### Training the best learner
+
+> let's train our best (lowest RMSE) learner (neural network) on our dataset
+
+```{r trainMLR, exercise = TRUE, message= FALSE}
+# extract the lon and lat from the sf geometry
+coords = data.frame(st_coordinates(extraction))
+# attributing our original dataset to another var (to avoid overwriting)
+ourPredictionGrid = extraction
+# converting our dataset from sf to simple df
+st_geometry(ourPredictionGrid) <- NULL
+# joining the coords
+ourPredictionGrid = dplyr::bind_cols(ourPredictionGrid, coords)
+
+# training the neural net on the dataset
+ourModel = mlr::train(
+  learner = mlr::getBMRLearners(bmr = ourbenchmark)[[1]],
+  task = ourTask)
+```
+
+### Predicting using the trained learner
+
+> Let's predict the value of tsa at the locations of our grid
+
+```{r predictMLR, exercise = TRUE, message= FALSE}
+# using our model to make the prediction
+ourPrediction = predict(
+  object = ourModel,
+  newdata = ourPredictionGrid
+)$data
+
+# injecting the predicted values in the prediction grid
+ourPredictedGrid = dplyr::bind_cols(ourPredictionGrid, ourPrediction)
+
+# making the predicted grid a spatial object again
+ourPredictedGrid = sf::st_as_sf(ourPredictedGrid, coords = c("X", "Y"), crs = 4326)
+plot(ourPredictedGrid)
+
+# Let's fake a raster rendering for better rendering
+sfgrid = st_sf(sf::st_make_grid(x = wallonia.proj,  cellsize = 5000, what = "polygons"))
+ourPredictedGrid = sf::st_transform(ourPredictedGrid, crs = 3812)
+ourPredictedGrid = sf::st_join(sfgrid, ourPredictedGrid)
+ourPredictedGrid = ourPredictedGrid %>%
+  dplyr::filter(!is.na(response))
+```
+
+### Mapping the prediction
+
+> Adding our prediction layer to leaflet map
+
+```{r mapMLR, exercise = TRUE, message= FALSE}
+# reprojecting to 4326 for leaflet
+ourPredictedGrid = sf::st_transform(ourPredictedGrid, 4326)
+
+# adding to our map
+map2 = map %>% 
+  addPolygons(
+    data = ourPredictedGrid,
+    group = "Predictions",
+    color = ~temperature.pal(response),
+    stroke = FALSE,
+    fillOpacity = 0.9,
+    label = ~htmltools::htmlEscape(as.character(response))) %>%
+  addLegend(
+    values = ourPredictedGrid$response,
+    group = "Predictions",
+    position = "bottomleft", pal = temperature.pal,
+    title = "predicted T (°C)") %>%
+  addLayersControl(
+         baseGroups = c("B&W", "Satelitte"),
+         overlayGroups = c("Elevation", "Admin", "Grid", "Predictions", "Stations"),
+         options = layersControlOptions(collapsed = TRUE)
+     )
+map2
+```
+
+## YOUR TURN !
+
+### What is my spatial background ? 
+
+* Master in Geography (2007) @ULB
+* Few years of research : climate change, ice cores : no spatial skills
+* 2015 : first coding experience (JS) : no spatial skills
+* 2016 : stateOftheMap, foss4gbxl, opensource GIS : 
+* 2017 : job as geostatistician @CRAW. First experience with R 
+* 2018 : giving a first talk @foss4gbxl about spatial with R !
+* __The point__ : don't be afraid to code. Yes, you can too !
+
+### How do I get Started ? 
+
+## Ressources
+
+Check my [curated list of free tools and datasets on my blog](https://pokyah.github.io/geo-tools/). I highly recommad to start with the 2 following items :
+
+* [datacamp course](https://www.datacamp.com/courses/spatial-analysis-in-r-with-sf-and-raster?tap_a=5644-dce66f&tap_s=10907-287229)
+* [geocomputation with R](https://geocompr.robinlovelace.net)
+
+## ABOUT
+
+This presentation was built using `learnr`, a package to create your own interactive tutorials
+
+You might also be interested in :
+
+* `thesisdown` : to author thesis with R + markdown
+* `blogdown` to author your jekyll/hugo glog with R + markdown
+* `bookdown` to author books with R + markdown

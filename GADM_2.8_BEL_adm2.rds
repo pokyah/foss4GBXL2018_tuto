@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>PermanentRedirect</Code><Message>The bucket you are attempting to access must be addressed using the specified endpoint. Please send all future requests to this endpoint.</Message><Bucket>gadm.org</Bucket><Endpoint>gadm.org.s3.amazonaws.com</Endpoint><RequestId>59E329960F3A1751</RequestId><HostId>JR09K1cr3B/9tTgGcZQxnkQhpF+iLcR90Hc90PCD2xo4SOWHZvBPE6SJf/kL5ZJSLjPyihH3iNc=</HostId></Error>
