@@ -1,0 +1,3 @@
+[submodule "inst/tutorials/spagrometeor/docker"]
+	path = inst/tutorials/spagrometeor/docker
+	url = git@github.com:pokyah/spagrometeor_docker.git
