@@ -162,7 +162,7 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 #rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
 #rawdata = agrometAPI::type_data(rawdata)
 # if you don&#39;t have a token, you can use the cached data
-rawdata = readRDS(&quot;rawdata.rds&quot;)</code></pre>
+load(&quot;rawdata.RData&quot;)</code></pre>
 <script type="application/json" data-opts-chunk="1">{"fig.width":6.5,"fig.height":4,"fig.retina":2,"fig.align":"default","fig.keep":"high","fig.show":"asis","out.width":624,"warning":true,"error":false,"message":true,"exercise.df_print":"paged","exercise.checker":"NULL"}</script>
 </div>
 </div>
@@ -232,7 +232,7 @@ sf::st_crs(mydataset)</code></pre>
 <p>Masking the DEM raster with the extent of Wallonia. Let’s download the boundary of Wallonia from OSM !</p>
 <div class="tutorial-exercise" data-label="walOSM" data-caption="Code" data-completion="1" data-diagnostics="1" data-startover="1" data-lines="0">
 <pre class="text"><code># the paths of the server to load GADM files have changed. manually downloading data from the site and importing https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds
-belgium = readRDS(&quot;./gadm36_BEL_2_sf.rds&quot;)
+load(&quot;belgium.RData&quot;)
 wallonia = belgium %&gt;% dplyr::filter(NAME_1 == &quot;Wallonie&quot;)
 wallonia = sf::st_transform(wallonia, 4326)
 
@@ -589,7 +589,8 @@ map2</code></pre>
 <h2>ABOUT</h2>
 <p>This presentation was built using <code>learnr</code>, a package to create your own interactive tutorials.</p>
 <p>to deploy it on shinyapps.io, you need to install devtools 1.4. <a href="https://shiny.rstudio.com/articles/shinyapps.html" class="uri">https://shiny.rstudio.com/articles/shinyapps.html</a> <a href="https://shiny.rstudio.com/articles/shinyapps.html" class="uri">https://shiny.rstudio.com/articles/shinyapps.html</a></p>
-<p>It was deployed to shinyapps.io using the following commands ``` devtools::install_github(“hadley/devtools”) devtools::install_github(“rstudio/packrat”) devtools::install_github(“tidyverse/dplyr”) library(devtools)</p>
+<p>It was deployed to shinyapps.io using the following commands</p>
+<p>Reproduciblility is only assured by providing complete setup instructions and resources <a href="https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd" class="uri">https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd</a> ``` devtools::install_github(“hadley/devtools”) devtools::install_github(“rstudio/packrat”) devtools::install_github(“tidyverse/dplyr”) library(devtools)</p>
 <p>You might also be interested in :</p>
 <ul>
 <li><code>thesisdown</code> : to author thesis with R + markdown</li>
@@ -610,9 +611,11 @@ library(leaflet)
 library(mlr)
 library(dplyr)
 library(ggplot2)
+library(rgdal)
+library(FNN)
 #library(agrometAPI)
 
-rawdata <- readRDS("rawdata.rds")
+load("rawdata.RData")
 
 #rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
 #rawdata = agrometAPI::type_data(rawdata)
@@ -656,7 +659,8 @@ sf::st_crs(mydataset)
 
 # the paths of the server to load GADM files have changed. manually downloading data from the site and importing https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds
 
-belgium = readRDS("./gadm36_BEL_2_sf.rds")
+#belgium = readRDS("gadm36_BEL_2_sf.rds")
+load("belgium.RData")
 wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
 wallonia = sf::st_transform(wallonia, 4326)
 

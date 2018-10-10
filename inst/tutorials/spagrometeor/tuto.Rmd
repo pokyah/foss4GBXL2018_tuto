@@ -39,7 +39,7 @@ library(rgdal)
 library(FNN)
 #library(agrometAPI)
 
-rawdata <- readRDS("rawdata.rds")
+load("rawdata.RData")
 
 #rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
 #rawdata = agrometAPI::type_data(rawdata)
@@ -83,7 +83,8 @@ sf::st_crs(mydataset)
 
 # the paths of the server to load GADM files have changed. manually downloading data from the site and importing https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds
 
-belgium = readRDS("./gadm36_BEL_2_sf.rds")
+#belgium = readRDS("gadm36_BEL_2_sf.rds")
+load("belgium.RData")
 wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
 wallonia = sf::st_transform(wallonia, 4326)
 
@@ -162,7 +163,7 @@ map <- leaflet() %>%
         data = grid,
         group = "Grid",
         radius = 2,
-        color = "grey",
+        color = "blue",
         stroke = TRUE, fillOpacity = 1) %>%
     addLegend(
       values = values(wal.DEM), group = "Elevation",
@@ -376,8 +377,9 @@ __spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather 
 # getting data from API (requires a token)
 #rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
 #rawdata = agrometAPI::type_data(rawdata)
-# if you don't have a token, you can use the cached data
-rawdata = readRDS("rawdata.rds")
+
+# if you don't have a token, you can use the cached data :
+rawdata
 ```
 
 ###  filter & preview
@@ -406,14 +408,9 @@ library(raster)
 build.DEM <- function(country) {
   # Get the Belgium DEM using raster package
   elevation = raster::getData("alt", country = country, mask = TRUE)
-  names(elevation)= "altitude"
-  # compute the slope from the elevation
-  #slope <- raster::terrain(elevation, opt="slope", unit="degrees")
-  # compute the aspect from the elevation
-  #aspect <- raster::terrain(elevation, opt="aspect", unit="degrees")
-  # stack the rasters
-  #topo <- stack(elevation, slope, aspect)
-  # Return the stack of rasters
+  # rename the elevation column
+  names(elevation) = "altitude"
+  # Return the raster
   return(elevation)
 } 
 # pass country ISO code to build its (low res) DEM and store the raster stack in the bel.DEM var
@@ -438,8 +435,8 @@ sf::st_crs(mydataset)
 Masking the DEM raster with the extent of Wallonia. Let's download the boundary of Wallonia from OSM !
 
 ```{r walOSM, exercise = TRUE}
-# the paths of the server to load GADM files have changed. manually downloading data from the site and importing https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds
-belgium = readRDS("./gadm36_BEL_2_sf.rds")
+# the paths of the server to load GADM files have changed ==> manual download from the site https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds was performed and saved under the belgium var
+belgium
 wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
 wallonia = sf::st_transform(wallonia, 4326)
 
@@ -540,7 +537,7 @@ map =  leaflet() %>%
         data = grid,
         group = "Grid",
         radius = 2,
-        color = "grey",
+        color = "blue",
         stroke = TRUE, fillOpacity = 1) %>%
     addLegend(
       values = values(wal.DEM), group = "Elevation",
