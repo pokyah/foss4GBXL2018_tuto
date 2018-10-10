@@ -35,6 +35,8 @@ library(leaflet)
 library(mlr)
 library(dplyr)
 library(ggplot2)
+library(rgdal)
+library(FNN)
 #library(agrometAPI)
 
 rawdata <- readRDS("rawdata.rds")
@@ -764,6 +766,9 @@ https://shiny.rstudio.com/articles/shinyapps.html
 https://shiny.rstudio.com/articles/shinyapps.html
 
 It was deployed to shinyapps.io using the following commands
+
+Reproduciblility is only assured by providing complete setup instructions and resources
+https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd
 ```
 devtools::install_github("hadley/devtools")
 devtools::install_github("rstudio/packrat")
