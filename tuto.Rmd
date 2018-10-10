@@ -25,9 +25,9 @@ runtime: shiny_prerendered
 # devtools::install_github("r-spatial/sf")
 # devtools::install_github("hadley/devtools")
 
-library(containerit)
 library(devtools)
 library(learnr)
+library(rgdal)
 library(sp)
 library(raster)
 library(sf)
@@ -36,7 +36,6 @@ library(leaflet)
 library(mlr)
 library(dplyr)
 library(ggplot2)
-library(rgdal)
 library(FNN)
 library(agrometAPI)
 
@@ -762,14 +761,14 @@ Check my [curated list of free tools and datasets on my blog](https://pokyah.git
 
 This presentation was built using `learnr`, a package to create your own interactive tutorials.
 
-to deploy it on shinyapps.io, you need to install devtools 1.4.
-https://shiny.rstudio.com/articles/shinyapps.html
-https://shiny.rstudio.com/articles/shinyapps.html
+As mentioned on to deploy it on [shinyapps.io](https://shiny.rstudio.com/articles/shinyapps.html), you need to have devtools >= 1.4
 
-It was deployed to shinyapps.io using the following commands
-
-Reproduciblility is only assured by providing complete setup instructions and resources
+Reproduciblility is only assured by providing complete setup instructions and resources. Docker is your best friend for this purpose.
+https://www.shinyproxy.io/deploying-apps/#run-shinyproxy
 https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd
+https://www.shinyproxy.io/deploying-apps/
+https://jlintusaari.github.io/2018/07/how-to-compile-rmarkdown-documents-using-docker/
+
 ```
 devtools::install_github("hadley/devtools")
 devtools::install_github("rstudio/packrat")
