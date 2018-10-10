@@ -25,6 +25,7 @@ runtime: shiny_prerendered
 # devtools::install_github("r-spatial/sf")
 # devtools::install_github("hadley/devtools")
 
+library(containerit)
 library(devtools)
 library(learnr)
 library(sp)
@@ -287,6 +288,9 @@ map2 = map %>%
          options = layersControlOptions(collapsed = TRUE)
      )
 map2
+
+# create Dockerfile representation
+dockerfile_object <- dockerfile()
 ```
 
 ## WELCOME ! 

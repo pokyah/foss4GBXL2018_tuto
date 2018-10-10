@@ -5,8 +5,8 @@ account: pokyah
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 502636
-bundleId: 1634131
+bundleId: 1634171
 url: https://pokyah.shinyapps.io/spagrometeor/
-when: 1539168784.76396
+when: 1539170368.22278
 asMultiple: FALSE
 asStatic: FALSE
