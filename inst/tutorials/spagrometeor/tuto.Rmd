@@ -23,21 +23,24 @@ runtime: shiny_prerendered
 ```{r setup, include=FALSE}
 
 # devtools::install_github("r-spatial/sf")
+# devtools::install_github("hadley/devtools")
 
 library(devtools)
 library(learnr)
-library(dplyr)
+library(sp)
 library(raster)
 library(sf)
 library(fontawesome)
 library(leaflet)
 library(mlr)
+library(dplyr)
 library(ggplot2)
+#library(agrometAPI)
 
 rawdata <- readRDS("rawdata.rds")
 
-# rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
-# rawdata = agrometAPI::type_data(rawdata)
+#rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+#rawdata = agrometAPI::type_data(rawdata)
 
 mydataset = rawdata %>%
   dplyr::filter(!is.na(mtime)) %>%
@@ -280,7 +283,7 @@ map2 = map %>%
          overlayGroups = c("Elevation", "Admin", "Grid", "Predictions", "Stations"),
          options = layersControlOptions(collapsed = TRUE)
      )
-
+map2
 ```
 
 ## WELCOME ! 
@@ -361,7 +364,7 @@ __spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather 
 ### install R package for agromet API
 
 ```{r installAPI, exercise=TRUE}
-devtools::install_github("pokyah/agrometAPI", ref = "master", force=TRUE)
+#devtools::install_github("pokyah/agrometAPI", ref = "master", force=TRUE)
 ```
 
 ###  Call the agromet API
@@ -754,11 +757,17 @@ Check my [curated list of free tools and datasets on my blog](https://pokyah.git
 
 ## ABOUT
 
-This presentation was built using `learnr`, a package to create your own interactive tutorials
+This presentation was built using `learnr`, a package to create your own interactive tutorials.
 
-It was deployed to shinyapps.io using the followin commands
+to deploy it on shinyapps.io, you need to install devtools 1.4.
+https://shiny.rstudio.com/articles/shinyapps.html
+https://shiny.rstudio.com/articles/shinyapps.html
+
+It was deployed to shinyapps.io using the following commands
 ```
+devtools::install_github("hadley/devtools")
 devtools::install_github("rstudio/packrat")
+devtools::install_github("tidyverse/dplyr")
 library(devtools)
 
 You might also be interested in :
