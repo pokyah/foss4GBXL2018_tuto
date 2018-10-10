@@ -37,7 +37,7 @@ library(dplyr)
 library(ggplot2)
 library(rgdal)
 library(FNN)
-#library(agrometAPI)
+library(agrometAPI)
 
 load("rawdata.RData")
 
