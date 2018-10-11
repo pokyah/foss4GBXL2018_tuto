@@ -89,6 +89,7 @@ grid = sf::st_intersection(grid, sf::st_transform(wallonia, crs = 3812))
 grid = sf::st_transform(grid, crs = 4326)
 wallonia = sf::st_transform(wallonia, crs = 4326)
 plot(grid)
+nrow(grid)
 
 # elevation ==> grid extraction 
 extracted <- raster::extract(
@@ -102,10 +103,9 @@ colnames(extracted) = c("ID", "altitude")
 
 grid$altitude = extracted$altitude
 grid = dplyr::select(grid, altitude)
-grid = dplyr::filter(grid, !is.na(altitude))
+# grid = dplyr::filter(grid, !is.na(altitude))
 plot(grid)
 sf::st_crs(grid)
-
 
 # leaflet
  elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(elevation),
@@ -204,6 +204,8 @@ plotBMRBoxplots(
 coords = data.frame(st_coordinates(grid))
 # attributing our original dataset to another var (to avoid overwriting)
 ourPredictionGrid = grid
+# remove NA values
+# ourPredictionGrid = dplyr::filter(!is.na(altitude))
 # converting our dataset from sf to simple df
 st_geometry(ourPredictionGrid) <- NULL
 # joining the coords
@@ -255,7 +257,7 @@ map2 = map %>%
     title = "predicted T (°C)") %>%
   addLayersControl(
          baseGroups = c("B&W", "Satelitte"),
-         overlayGroups = c("Elevation", "Admin", "Grid", "Predictions", "Stations"),
+         overlayGroups = c("Stations", "Predictions", "Elevation", "Admin", "Grid"),
          options = layersControlOptions(collapsed = TRUE)
      )
 map2
@@ -507,8 +509,6 @@ extracted
 grid$altitude = extracted$altitude
 # keeping only the altitude data
 grid = dplyr::select(grid, altitude)
-# removing locations where altitude is NA
-grid = dplyr::filter(grid, !is.na(altitude))
 # visualizing
 plot(grid)
 # checking CRS
@@ -681,9 +681,9 @@ plotBMRBoxplots(
 
 ```{r trainMLR, exercise = TRUE, message= FALSE}
 # extract the lon and lat from the sf geometry
-coords = data.frame(st_coordinates(extraction))
+coords = data.frame(st_coordinates(grid))
 # attributing our original dataset to another var (to avoid overwriting)
-ourPredictionGrid = extraction
+ourPredictionGrid = grid
 # converting our dataset from sf to simple df
 st_geometry(ourPredictionGrid) <- NULL
 # joining the coords
@@ -745,7 +745,7 @@ map2 = map %>%
     title = "predicted T (°C)") %>%
   addLayersControl(
          baseGroups = c("B&W", "Satelitte"),
-         overlayGroups = c("Elevation", "Admin", "Grid", "Predictions", "Stations"),
+         overlayGroups = c("Stations", "Predictions", "Elevation", "Admin", "Grid"),
          options = layersControlOptions(collapsed = TRUE)
      )
 map2
