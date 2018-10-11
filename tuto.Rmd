@@ -41,7 +41,7 @@ library(FNN)
 library(agrometAPI)
 library(elevatr)
 library(rnaturalearth)
-library(naturalearthhires)
+library(rnaturalearthhires)
 
 # downloading data
 rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
@@ -73,7 +73,7 @@ sf::st_crs(wallonia)
 
 # downloading DEM
 # for correspondance between zoom & res : https://mapzen.com/documentation/terrain-tiles/data-sources/#what-is-the-ground-resolution
-elevation = elevatr::get_elev_raster(as(wallonia, "Spatial"), z = 9, src = "aws")
+elevation = elevatr::get_elev_raster(as(wallonia, "Spatial"), z = 5, src = "aws")
 class(elevation)
 # checking CRS
 raster::crs(elevation, asText = TRUE)
@@ -90,6 +90,8 @@ wallonia = sf::st_transform(wallonia, crs = 3812)
 grid = sf::st_sf(sf::st_make_grid(x = wallonia,  cellsize = 5000, what = "centers"))
 grid = sf::st_intersection(grid, wallonia)
 grid = sf::st_transform(grid, crs = 4326)
+wallonia = sf::st_transform(wallonia, crs = 4326)
+plot(grid)
 
 # elevation ==> grid extraction 
 extracted <- raster::extract(
@@ -100,14 +102,16 @@ extracted <- raster::extract(
   df = TRUE
 )
 colnames(extracted) = c("ID", "altitude")
-extraction = dplyr::bind_cols(grid, extracted)
-extraction = dplyr::filter(extraction, !is.na(altitude))
-extraction = dplyr::select(extraction, altitude)
-head(extraction)
-plot(extraction)
- 
+
+grid$altitude = extracted$altitude
+grid = dplyr::select(grid, altitude)
+grid = dplyr::filter(grid, !is.na(altitude))
+plot(grid)
+sf::st_crs(grid)
+
+
 # leaflet
- elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(wal.DEM$altitude),
+ elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(elevation),
   na.color = "transparent")
 temperature.pal <- colorNumeric(reverse = TRUE, "RdBu", domain=mydataset$tsa,
   na.color = "transparent")
@@ -119,7 +123,7 @@ map <- leaflet() %>%
      addProviderTiles(
          providers$Esri.WorldImagery, group = "Satelitte") %>%
      addRasterImage(
-         wal.DEM, group = "Elevation", colors = elevation.pal, opacity = 0.8) %>%
+         elevation, group = "Elevation", colors = elevation.pal, opacity = 0.8) %>%
      addPolygons(
          data = wallonia, group = "Admin", color = "#444444", weight = 1, smoothFactor = 0.5,
          opacity = 1, fillOpacity = 0.1, fillColor = "grey") %>%
@@ -137,7 +141,7 @@ map <- leaflet() %>%
         color = "blue",
         stroke = TRUE, fillOpacity = 1) %>%
     addLegend(
-      values = values(wal.DEM), group = "Elevation",
+      values = values(elevation), group = "Elevation",
       position = "bottomright", pal = elevation.pal,
       title = "Elevation (m)") %>%
      addLayersControl(
@@ -196,13 +200,13 @@ library(ggplot2)
 plotBMRBoxplots(
   bmr = ourbenchmark,
   measure = rmse,
-  order.lrn = mlr::getBMRLearnerIds(ourbenchmark)) +
+  order.lrns = mlr::getBMRLearnerIds(ourbenchmark)) +
   aes(color = learner.id)
 
 # extract the lon and lat from the sf geometry
-coords = data.frame(st_coordinates(extraction))
+coords = data.frame(st_coordinates(grid))
 # attributing our original dataset to another var (to avoid overwriting)
-ourPredictionGrid = extraction
+ourPredictionGrid = grid
 # converting our dataset from sf to simple df
 st_geometry(ourPredictionGrid) <- NULL
 # joining the coords
@@ -229,7 +233,7 @@ plot(ourPredictedGrid)
 # injecting data in polygons for better rendering
 # https://r-spatial.github.io/sf/reference/st_make_grid.html
 
-sfgrid = st_sf(sf::st_make_grid(x = wallonia.proj,  cellsize = 5000, what = "polygons"))
+sfgrid = st_sf(sf::st_make_grid(x = sf::st_transform(wallonia, 3812),  cellsize = 5000, what = "polygons"))
 ourPredictedGrid = sf::st_transform(ourPredictedGrid, crs = 3812)
 ourPredictedGrid = sf::st_join(sfgrid, ourPredictedGrid)
 ourPredictedGrid = ourPredictedGrid %>%
@@ -282,7 +286,7 @@ knitr::include_graphics("images/foss4gbe.svg")
 knitr::include_graphics("images/craw_fr.png")
 ```
 
-## PROJECT
+## PROJECT PRESENTATION
 
 > A very short introduction to the project
 
@@ -304,7 +308,7 @@ __spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather 
 
 ## GIS BUILDING BLOCKS
 
-### data 
+### DATA
 
 `r fa("cubes" , height = "50px", fill = "#75aadb")`
 
@@ -313,7 +317,7 @@ __spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather 
 * interpolation grid
 * map backgrounds
 
-### Tools
+### TOOLS
 
 `r fa("wrench" , height = "50px", fill = "#75aadb")`
 
@@ -331,31 +335,56 @@ __spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather 
 * [Increased popularity among tech companies](https://thenextweb.com/offers/2018/03/28/tech-giants-are-harnessing-r-programming-learn-it-and-get-hired-with-this-complete-training-bundle/)
 * [Impressive growth](https://stackoverflow.blog/2017/10/10/impressive-growth-r/) and active community
 
-## API DATA
+## CODE LIBRARIES
 
-> Retrieving data available through an API
+> Libraries are packaged thematic R-softwares containing predefined sets of functions to help you save code
 
-### install R package for agromet API
-
-```{r installAPI, exercise=TRUE}
-#devtools::install_github("pokyah/agrometAPI", ref = "master", force=TRUE)
+```{r librariesLoading, exercise = TRUE}
+library(devtools)
+library(learnr)
+library(rgdal)
+library(sp)
+library(raster)
+library(sf)
+library(rgeos)
+library(fontawesome)
+library(leaflet)
+library(mlr)
+library(dplyr)
+library(ggplot2)
+library(FNN)
+library(agrometAPI)
+library(elevatr)
+library(rnaturalearth)
+library(naturalearthhires)
+library(rnaturalearthhires)
 ```
 
-###  Call the agromet API
+## DATA ACQUISITION
 
-```{r agrometAPIcall, exercise=TRUE}
+> We can use our various libraries to acquire the required datasets (DEM, boundaries, weather stations data, etc...)
+
+`r fa("r-project")` libraries are available on CRAN and `r fa("github")`
+
+### AGROMET WEATHER STATIONS DATA
+
+> We can get the temperature data from our stations using the `agrometAPI` library
+
+1. Calling the API 
+
+```{r agrometAPIget, exercise=TRUE}
 # getting data from API (requires a token)
-#rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
-#rawdata = agrometAPI::type_data(rawdata)
+rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+rawdata = agrometAPI::type_data(rawdata)
 
-# if you don't have a token, you can use the cached data :
+# Let's see how it looks
 rawdata
 ```
 
-###  filter & preview
+2. Filtering data
 
-```{r filter, exercise=TRUE}
-library(dplyr)
+```{r agrometAPIfilter, exercise=TRUE}
+# Let's Filter it using dplyr
 mydataset = rawdata %>%
   dplyr::filter(!is.na(mtime)) %>%
   dplyr::filter(sid != 38 & sid != 41) %>%
@@ -365,148 +394,160 @@ mydataset = rawdata %>%
   dplyr::filter(!type_name %in% c("PS2000","PESSL","BODATA","Sencrop","netdl1000","SYNOP")) %>%
   dplyr::select(c(sid, poste, longitude, latitude, altitude, mtime, tsa))
 
+# Let's see how it looks
 mydataset
 ```
 
-## BOUNDARIES
+3. Making the data spatial (__! Coordinate Reference System ([CRS](https://epsg.io/))__)
 
-> Retrieving admin boundaries of the interest zone
-
-```{r adminBoundaries, exercise=TRUE}
-# downloading admin boundaries of Belgium
-belgium = sf::st_as_sf((rnaturalearth::ne_states(country = 'belgium')))
-wallonia = belgium %>% dplyr::filter(region == "Walloon")
-
-# Checking the Coordinate Reference system
-# https://epsg.io/
-st_crs(wallonia)
-```
-
-## DEM
-
-### Downloading
-```{r DEMraster, exercise=TRUE}
-# loading the raster package
-library(raster)
-# declaration of the function to build a DEM using
-build.DEM <- function(country) {
-  # Get the Belgium DEM using raster package
-  elevation = raster::getData("alt", country = country, mask = TRUE)
-  # rename the elevation column
-  names(elevation) = "altitude"
-  # Return the raster
-  return(elevation)
-} 
-# pass country ISO code to build its (low res) DEM and store the raster stack in the bel.DEM var
-bel.DEM = build.DEM("BE")
-plot(bel.DEM)
-```
-
-### Reprojecting
-```{r DEMCRS, exercise = TRUE}
-raster.crs = raster::crs(bel.DEM ,asText = TRUE)
-raster.crs
-
+```{r agrometAPIspatial, exercise=TRUE}
+# making it spatial
 mydataset = sf::st_as_sf(mydataset, 
   coords = c("longitude", "latitude"),
   crs = 4326)
 
-mydataset = sf::st_transform(mydataset, crs = raster.crs)
+# outputing the CRS to the console
 sf::st_crs(mydataset)
 ```
 
-### Croping  `r fa("crop")` 
-Masking the DEM raster with the extent of Wallonia. Let's download the boundary of Wallonia from OSM !
+### ADMIN BOUNDARIES
 
-```{r walOSM, exercise = TRUE}
-# the paths of the server to load GADM files have changed ==> manual download from the site https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds was performed and saved under the belgium var
+> Many R libraries provide the ability to get admin boundaries. We use `rnaturalearth`
+
+1. Downloading Belgium admin bondaries 
+```{r adminGet, exercise=TRUE}
+# downloading admin boundaries of Belgium
+belgium = sf::st_as_sf((rnaturalearth::ne_states(country = 'belgium')))
+# inspecting the data
 belgium
-wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
-wallonia = sf::st_transform(wallonia, 4326)
-
-# croping (masking)
-wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
-plot(wal.DEM)
-
-##### below is the old code that works with automatic download
-# belgium = raster::getData("GADM", country = "BE", level = 2)
-# # coercing to sf class for easier data manipulation
-# belgium = sf::st_as_sf(belgium)
-# # extract Wallonia
-# wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
-# # croping (masking)
-# wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
-# plot(wal.DEM)
 ```
 
+2. Filtering to only keep Wallonia
 
-## GRID 
-`r fa("grip-horizontal")` 
-* inspired from [`r fa("stack-overflow")`](https://stackoverflow.com/questions/43436466/create-grid-in-r-for-kriging-in-gstat/43444232)
-* requires the good old `sp` library
+```{r adminFilter, exercise=TRUE}
+# Filtering Wallonia data
+wallonia = belgium %>% dplyr::filter(region == "Walloon")
 
-### Building
-```{r grid, exercise = TRUE}
-# projected for resolution
-wallonia.proj = st_transform(wallonia, crs = 3812)
-# tranform to .sp class
-wallonia.sp = as(wallonia.proj, "Spatial")
-# Make a rectangular grid over your SpatialPolygonsDataFrame
- grid.sp = sp::makegrid(x = wallonia.sp, cellsize = 5000,
-    pretty = TRUE)
-# Convert the grid to SpatialPoints and subset these points by the polygon.
- grid.pts <- sp::SpatialPoints(coords = grid.sp, 
-                         proj4string = sp::CRS(proj4string(wallonia.sp)))
-# find all points in `grd.pts` that fall within `wallonia`
- grid.pts.in <- grid.pts[wallonia.sp, ]
-# transfomm to grid
- sp::gridded(grid.pts.in) = TRUE
-# convert to sf
- grid = sf::st_as_sf(grid.pts.in)
-# reproject to EPSG = 4326
- grid = sf::st_transform(grid, crs = st_crs(wallonia))
-# plot the grid
- plot(grid)
+# Checking the Coordinate Reference system
+st_crs(wallonia)
 ```
 
-### Exctrating data
+### ELEVATION DATA - DEM RASTER
 
-> extracting raster data with grid object and adding extracted features to attributes table
+> Again, many libraries provide ways to download such data. We use `elevatr`
 
-```{r grid-extract, exercise = TRUE}
-# extracting elevation data at the locations of our grid
-extracted <- raster::extract(
-  wal.DEM,
+1. Downloading data.
+
+Raster resolutioncontrolled by `z` param. See [package documentation](https://cran.r-project.org/web/packages/elevatr/vignettes/introduction_to_elevatr.html#get_raster_elevation_data)
+
+```{r elevationGet, exercise=TRUE}
+# downloading DEM data and storing it in an object. Z = 5 ==> about 3km² resolution
+elevation = elevatr::get_elev_raster(as(wallonia, "Spatial"), z = 5, src = "aws")
+class(elevation)
+plot(elevation)
+# checking CRS
+raster::crs(elevation, asText = TRUE)
+```
+
+2. Cropping with Wallonia borders
+
+```{r elevationCrop, exercise=TRUE}
+# masking
+elevation = raster::mask(elevation, as(wallonia, "Spatial"))
+# ploting the elevation raster
+plot(elevation)
+```
+
+### INTERPOLATION GRID
+
+> Grid is quickly built with new `sf` library
+
+1. Reprojecting the extent of our interest zone from __geographic__ to __projected__ CRS. See [this](https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/OverviewCoordinateReferenceSystems.pdf) cheatsheet.
+
+```{r gridTrans, exercise=TRUE}
+# projected for grid resolution defined in meters
+wallonia = sf::st_transform(wallonia, crs = 3812)
+```
+
+2. Building the grid
+
+```{r gridBuild, exercise=TRUE}
+# building the grid at 5 km² resolution
+grid = sf::st_sf(sf::st_make_grid(x = wallonia,  cellsize = 5000, what = "centers"))
+# limit it to Wallonia and not full extent
+grid = sf::st_intersection(grid, wallonia)
+# visualizing 
+plot(grid)
+```
+
+3. Projecting back to __geographic__ CRS
+
+```{r gridReproj, exercise=TRUE}
+grid = sf::st_transform(grid, crs = 4326)
+wallonia = sf::st_transform(grid, crs = 4326)
+```
+
+### FEEDING THE GRID WITH EXPLANATORY DATA
+
+> Injecting explanatory variables (limited to elevation for this example) in the grid. 
+
+1. Extracting raster data at the locations of grid points
+
+```{r feedingExtract, exercise=TRUE}
+# extracting
+extracted = raster::extract(
+  elevation,
   as(grid,"Spatial"),
   fun = mean,
   na.rm = TRUE,
   df = TRUE
 )
-extraction <- dplyr::bind_cols(grid, extracted)
-extraction <- dplyr::filter(extraction, !is.na(altitude))
-head(extraction)
-plot(extraction)
+# inspecting
+extracted
+# renaming columns
+colnames(extracted) = c("ID", "altitude")
 ```
 
-## VISUALIZATION
+2. Injecting the extracted dataframe output into the grid
+```{r feedingInject, exercise=TRUE}
+# injecting
+grid$altitude = extracted$altitude
+# keeping only the altitude data
+grid = dplyr::select(grid, altitude)
+# removing locations where altitude is NA
+grid = dplyr::filter(grid, !is.na(altitude))
+# visualizing
+plot(grid)
+# checking CRS
+sf::st_crs(grid)
+```
 
->  make our spatial data intelligible by mapping it using `leaflet`
+## DATA VISUALIZATION
 
-### Leaflet map
-```{r, map, exercise = TRUE}
-elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(wal.DEM$altitude),
+### LEAFLET MAP
+
+> Making our spatial data intelligible by mapping it using `leaflet`
+
+1. preparing the color palettes and settings for mobile phone responsiveness
+
+```{r, leafletSettings, exercise = TRUE}
+elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(elevation),
   na.color = "transparent")
 temperature.pal <- colorNumeric(reverse = TRUE, "RdBu", domain=mydataset$tsa,
   na.color = "transparent")
 responsiveness = "\'<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\'"
+```
 
-map =  leaflet() %>% 
+2. mapping the various datasets
+
+```{r, leafletMap, exercise = TRUE}
+map <- leaflet() %>% 
      addProviderTiles(
          providers$OpenStreetMap.BlackAndWhite, group = "B&W") %>%
      addProviderTiles(
          providers$Esri.WorldImagery, group = "Satelitte") %>%
      addRasterImage(
-         wal.DEM, group = "Elevation", colors = elevation.pal, opacity = 0.8) %>%
+         elevation, group = "Elevation", colors = elevation.pal, opacity = 0.8) %>%
      addPolygons(
          data = wallonia, group = "Admin", color = "#444444", weight = 1, smoothFactor = 0.5,
          opacity = 1, fillOpacity = 0.1, fillColor = "grey") %>%
@@ -524,7 +565,7 @@ map =  leaflet() %>%
         color = "blue",
         stroke = TRUE, fillOpacity = 1) %>%
     addLegend(
-      values = values(wal.DEM), group = "Elevation",
+      values = values(elevation), group = "Elevation",
       position = "bottomright", pal = elevation.pal,
       title = "Elevation (m)") %>%
      addLayersControl(
@@ -680,7 +721,7 @@ ourPredictedGrid = sf::st_as_sf(ourPredictedGrid, coords = c("X", "Y"), crs = 43
 plot(ourPredictedGrid)
 
 # Let's fake a raster rendering for better rendering
-sfgrid = st_sf(sf::st_make_grid(x = wallonia.proj,  cellsize = 5000, what = "polygons"))
+sfgrid = st_sf(sf::st_make_grid(x = sf::st_transform(wallonia, 3812),  cellsize = 5000, what = "polygons"))
 ourPredictedGrid = sf::st_transform(ourPredictedGrid, crs = 3812)
 ourPredictedGrid = sf::st_join(sfgrid, ourPredictedGrid)
 ourPredictedGrid = ourPredictedGrid %>%
@@ -751,7 +792,7 @@ Reproduciblility is only assured by providing complete setup instructions and re
 * https://www.shinyproxy.io/deploying-apps/
 * https://jlintusaari.github.io/2018/07/how-to-compile-rmarkdown-documents-using-docker/
 
-```
+
 devtools::install_github("hadley/devtools")
 devtools::install_github("rstudio/packrat")
 devtools::install_github("tidyverse/dplyr")
