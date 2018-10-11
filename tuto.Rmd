@@ -31,6 +31,7 @@ library(rgdal)
 library(sp)
 library(raster)
 library(sf)
+library(rgeos)
 library(fontawesome)
 library(leaflet)
 library(mlr)
@@ -38,12 +39,15 @@ library(dplyr)
 library(ggplot2)
 library(FNN)
 library(agrometAPI)
+library(elevatr)
+library(rnaturalearth)
+library(naturalearthhires)
 
-load("rawdata.RData")
+# downloading data
+rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+rawdata = agrometAPI::type_data(rawdata)
 
-#rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
-#rawdata = agrometAPI::type_data(rawdata)
-
+# filtering 
 mydataset = rawdata %>%
   dplyr::filter(!is.na(mtime)) %>%
   dplyr::filter(sid != 38 & sid != 41) %>%
@@ -53,85 +57,52 @@ mydataset = rawdata %>%
   dplyr::filter(!type_name %in% c("PS2000","PESSL","BODATA","Sencrop","netdl1000","SYNOP")) %>%
   dplyr::select(c(sid, poste, longitude, latitude, altitude, mtime, tsa))
 
-# declaration of the function to build a DEM using
-build.DEM <- function(country) {
-  # Get the Belgium DEM using raster package
-  elevation = raster::getData("alt", country = country, mask = TRUE)
-  names(elevation) = "altitude"
-  # compute the slope from the elevation
-  #slope <- raster::terrain(elevation, opt="slope", unit="degrees")
-  # compute the aspect from the elevation
-  #aspect <- raster::terrain(elevation, opt="aspect", unit="degrees")
-  # stack the rasters
-  #topo <- stack(elevation, slope, aspect)
-  # Return the stack of rasters
-  return(elevation)
-} 
-# pass country ISO code to build its (low res) DEM and store the raster stack in the bel.DEM var
-bel.DEM = build.DEM("BE")
-plot(bel.DEM)
-
-raster.crs = raster::crs(bel.DEM ,asText = TRUE)
-raster.crs
-
+# making it spatial
 mydataset = sf::st_as_sf(mydataset, 
   coords = c("longitude", "latitude"),
   crs = 4326)
-
-mydataset = sf::st_transform(mydataset, crs = raster.crs)
 sf::st_crs(mydataset)
 
-# the paths of the server to load GADM files have changed. manually downloading data from the site and importing https://biogeo.ucdavis.edu/data/gadm3.6/Rsf/gadm36_BEL_2_sf.rds
 
-#belgium = readRDS("gadm36_BEL_2_sf.rds")
-load("belgium.RData")
-wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
-wallonia = sf::st_transform(wallonia, 4326)
+# downloading admin boundaries of Belgium
+belgium = sf::st_as_sf((ne_states(country = 'belgium')))
+wallonia = belgium %>% dplyr::filter(region == "Walloon")
+class(wallonia)
+# checking CRS
+sf::st_crs(wallonia)
 
-# croping (masking)
-wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
-plot(wal.DEM)
-# # downloading admin boundaries of Wallonia (other method)
-# belgium = raster::getData("GADM", country = "BE", level = 2)
-# # coercing to sf class for easier data manipulation
-# belgium = sf::st_as_sf(belgium)
-# # extract Wallonia
-# wallonia = belgium %>% dplyr::filter(NAME_1 == "Wallonie")
-# # croping (masking)
-# wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
-# plot(wal.DEM)
+# downloading DEM
+# for correspondance between zoom & res : https://mapzen.com/documentation/terrain-tiles/data-sources/#what-is-the-ground-resolution
+elevation = elevatr::get_elev_raster(as(wallonia, "Spatial"), z = 9, src = "aws")
+class(elevation)
+# checking CRS
+raster::crs(elevation, asText = TRUE)
 
-# projected for resolution
-wallonia.proj = st_transform(wallonia, crs = 3812)
-# tranform to .sp class
-wallonia.sp = as(wallonia.proj, "Spatial")
-# Make a rectangular grid over your SpatialPolygonsDataFrame
- grid.sp = sp::makegrid(x = wallonia.sp, cellsize = 5000,
-    pretty = TRUE)
-# Convert the grid to SpatialPoints and subset these points by the polygon.
- grid.pts <- sp::SpatialPoints(coords = grid.sp, 
-                         proj4string = sp::CRS(proj4string(wallonia.sp)))
-# find all points in `grd.pts` that fall within `wallonia`
- grid.pts.in <- grid.pts[wallonia.sp, ]
-# transfomm to grid
- sp::gridded(grid.pts.in) = TRUE
-# convert to sf
- grid = sf::st_as_sf(grid.pts.in)
-# reproject to EPSG = 4326
- grid = sf::st_transform(grid, crs = st_crs(wallonia))
-# plot the grid
- plot(grid)
- 
-# grid extraction 
+# croping DEM to wallonia
+elevation = raster::mask(elevation, as(wallonia, "Spatial"))
+# ploting the elevation raster
+plot(elevation)
+
+# projected for grid resolution defined in meters
+wallonia = sf::st_transform(wallonia, crs = 3812)
+
+#  cropping
+grid = sf::st_sf(sf::st_make_grid(x = wallonia,  cellsize = 5000, what = "centers"))
+grid = sf::st_intersection(grid, wallonia)
+grid = sf::st_transform(grid, crs = 4326)
+
+# elevation ==> grid extraction 
 extracted <- raster::extract(
-  wal.DEM,
+  elevation,
   as(grid,"Spatial"),
   fun = mean,
   na.rm = TRUE,
   df = TRUE
 )
-extraction <- dplyr::bind_cols(grid, extracted)
-extraction <- dplyr::filter(extraction, !is.na(altitude))
+colnames(extracted) = c("ID", "altitude")
+extraction = dplyr::bind_cols(grid, extracted)
+extraction = dplyr::filter(extraction, !is.na(altitude))
+extraction = dplyr::select(extraction, altitude)
 head(extraction)
 plot(extraction)
  
@@ -287,9 +258,6 @@ map2 = map %>%
          options = layersControlOptions(collapsed = TRUE)
      )
 map2
-
-# create Dockerfile representation
-dockerfile_object <- dockerfile()
 ```
 
 ## WELCOME ! 
@@ -375,7 +343,6 @@ __spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather 
 
 ###  Call the agromet API
 
-
 ```{r agrometAPIcall, exercise=TRUE}
 # getting data from API (requires a token)
 #rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
@@ -386,7 +353,7 @@ rawdata
 ```
 
 ###  filter & preview
-ins
+
 ```{r filter, exercise=TRUE}
 library(dplyr)
 mydataset = rawdata %>%
@@ -399,6 +366,20 @@ mydataset = rawdata %>%
   dplyr::select(c(sid, poste, longitude, latitude, altitude, mtime, tsa))
 
 mydataset
+```
+
+## BOUNDARIES
+
+> Retrieving admin boundaries of the interest zone
+
+```{r adminBoundaries, exercise=TRUE}
+# downloading admin boundaries of Belgium
+belgium = sf::st_as_sf((rnaturalearth::ne_states(country = 'belgium')))
+wallonia = belgium %>% dplyr::filter(region == "Walloon")
+
+# Checking the Coordinate Reference system
+# https://epsg.io/
+st_crs(wallonia)
 ```
 
 ## DEM
@@ -764,10 +745,11 @@ This presentation was built using `learnr`, a package to create your own interac
 As mentioned on to deploy it on [shinyapps.io](https://shiny.rstudio.com/articles/shinyapps.html), you need to have devtools >= 1.4
 
 Reproduciblility is only assured by providing complete setup instructions and resources. Docker is your best friend for this purpose.
-https://www.shinyproxy.io/deploying-apps/#run-shinyproxy
-https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd
-https://www.shinyproxy.io/deploying-apps/
-https://jlintusaari.github.io/2018/07/how-to-compile-rmarkdown-documents-using-docker/
+
+* https://www.shinyproxy.io/deploying-apps/#run-shinyproxy
+* https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd
+* https://www.shinyproxy.io/deploying-apps/
+* https://jlintusaari.github.io/2018/07/how-to-compile-rmarkdown-documents-using-docker/
 
 ```
 devtools::install_github("hadley/devtools")

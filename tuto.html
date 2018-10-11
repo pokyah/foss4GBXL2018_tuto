@@ -584,9 +584,9 @@ map2</code></pre>
 <div id="section-about" class="section level2">
 <h2>ABOUT</h2>
 <p>This presentation was built using <code>learnr</code>, a package to create your own interactive tutorials.</p>
-<p>to deploy it on shinyapps.io, you need to install devtools 1.4. <a href="https://shiny.rstudio.com/articles/shinyapps.html" class="uri">https://shiny.rstudio.com/articles/shinyapps.html</a> <a href="https://shiny.rstudio.com/articles/shinyapps.html" class="uri">https://shiny.rstudio.com/articles/shinyapps.html</a></p>
-<p>It was deployed to shinyapps.io using the following commands</p>
-<p>Reproduciblility is only assured by providing complete setup instructions and resources <a href="https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd" class="uri">https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd</a> ``` devtools::install_github(“hadley/devtools”) devtools::install_github(“rstudio/packrat”) devtools::install_github(“tidyverse/dplyr”) library(devtools)</p>
+<p>As mentioned on to deploy it on <a href="https://shiny.rstudio.com/articles/shinyapps.html">shinyapps.io</a>, you need to have devtools &gt;= 1.4</p>
+<p>Reproduciblility is only assured by providing complete setup instructions and resources. Docker is your best friend for this purpose. <a href="https://www.shinyproxy.io/deploying-apps/#run-shinyproxy" class="uri">https://www.shinyproxy.io/deploying-apps/#run-shinyproxy</a> <a href="https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd" class="uri">https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd</a> <a href="https://www.shinyproxy.io/deploying-apps/" class="uri">https://www.shinyproxy.io/deploying-apps/</a> <a href="https://jlintusaari.github.io/2018/07/how-to-compile-rmarkdown-documents-using-docker/" class="uri">https://jlintusaari.github.io/2018/07/how-to-compile-rmarkdown-documents-using-docker/</a></p>
+<p>``` devtools::install_github(“hadley/devtools”) devtools::install_github(“rstudio/packrat”) devtools::install_github(“tidyverse/dplyr”) library(devtools)</p>
 <p>You might also be interested in :</p>
 <ul>
 <li><code>thesisdown</code> : to author thesis with R + markdown</li>
@@ -597,9 +597,9 @@ map2</code></pre>
 # devtools::install_github("r-spatial/sf")
 # devtools::install_github("hadley/devtools")
 
-library(containerit)
 library(devtools)
 library(learnr)
+library(rgdal)
 library(sp)
 library(raster)
 library(sf)
@@ -608,14 +608,13 @@ library(leaflet)
 library(mlr)
 library(dplyr)
 library(ggplot2)
-library(rgdal)
 library(FNN)
 library(agrometAPI)
 
-load("rawdata.RData")
+#load("rawdata.RData")
 
-#rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
-#rawdata = agrometAPI::type_data(rawdata)
+rawdata = agrometAPI::get_data(user_token = "52a71385b68c101254944786aae44a7aa106ae1f", dfrom = (Sys.Date() - 1))
+rawdata = agrometAPI::type_data(rawdata)
 
 mydataset = rawdata %>%
   dplyr::filter(!is.na(mtime)) %>%
@@ -860,9 +859,6 @@ map2 = map %>%
          options = layersControlOptions(collapsed = TRUE)
      )
 map2
-
-# create Dockerfile representation
-dockerfile_object <- dockerfile()
 </script>
  
 <script type="application/shiny-prerendered" data-context="server">
