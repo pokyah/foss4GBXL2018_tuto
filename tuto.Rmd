@@ -83,12 +83,9 @@ elevation = raster::mask(elevation, as(wallonia, "Spatial"))
 # ploting the elevation raster
 plot(elevation)
 
-# projected for grid resolution defined in meters
-wallonia = sf::st_transform(wallonia, crs = 3812)
-
 #  cropping
-grid = sf::st_sf(sf::st_make_grid(x = wallonia,  cellsize = 5000, what = "centers"))
-grid = sf::st_intersection(grid, wallonia)
+grid = sf::st_sf(sf::st_make_grid(x = sf::st_transform(wallonia, crs = 3812),  cellsize = 5000, what = "centers"))
+grid = sf::st_intersection(grid, sf::st_transform(wallonia, crs = 3812))
 grid = sf::st_transform(grid, crs = 4326)
 wallonia = sf::st_transform(wallonia, crs = 4326)
 plot(grid)
@@ -98,7 +95,7 @@ extracted <- raster::extract(
   elevation,
   as(grid,"Spatial"),
   fun = mean,
-  na.rm = TRUE,
+  na.rm = FALSE,
   df = TRUE
 )
 colnames(extracted) = c("ID", "altitude")
@@ -137,9 +134,9 @@ map <- leaflet() %>%
     addCircleMarkers(
         data = grid,
         group = "Grid",
-        radius = 2,
-        color = "blue",
-        stroke = TRUE, fillOpacity = 1) %>%
+        radius = 1,
+        color = "orange",
+        stroke = FALSE, fillOpacity = 1) %>%
     addLegend(
       values = values(elevation), group = "Elevation",
       position = "bottomright", pal = elevation.pal,
@@ -339,6 +336,11 @@ __spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather 
 
 > Libraries are packaged thematic R-softwares containing predefined sets of functions to help you save code
 
+* R libraries are available on [CRAN](https://cran.r-project.org/) and `r fa("github")`.
+* one-line code to install these (`install.packages(<PACKAGE_NAME>)`).
+* We need various libraries to acquire the required datasets (DEM, boundaries, weather stations data, etc...) and manipulate these.
+* pre-installed for this demo
+
 ```{r librariesLoading, exercise = TRUE}
 library(devtools)
 library(learnr)
@@ -356,21 +358,14 @@ library(FNN)
 library(agrometAPI)
 library(elevatr)
 library(rnaturalearth)
-library(naturalearthhires)
 library(rnaturalearthhires)
 ```
 
 ## DATA ACQUISITION
 
-> We can use our various libraries to acquire the required datasets (DEM, boundaries, weather stations data, etc...)
-
-`r fa("r-project")` libraries are available on CRAN and `r fa("github")`
-
 ### AGROMET WEATHER STATIONS DATA
 
 > We can get the temperature data from our stations using the `agrometAPI` library
-
-1. Calling the API 
 
 ```{r agrometAPIget, exercise=TRUE}
 # getting data from API (requires a token)
@@ -381,7 +376,9 @@ rawdata = agrometAPI::type_data(rawdata)
 rawdata
 ```
 
-2. Filtering data
+### FILTERING DATA
+
+> Filtering is easy with `dplyr`
 
 ```{r agrometAPIfilter, exercise=TRUE}
 # Let's Filter it using dplyr
@@ -398,7 +395,12 @@ mydataset = rawdata %>%
 mydataset
 ```
 
-3. Making the data spatial (__! Coordinate Reference System ([CRS](https://epsg.io/))__)
+### MAKING DATA SPATIAL
+
+> The new `sf` library allows to easily manipulate data with spatial attributes.
+
+__! Coordinate Reference System ([CRS](https://epsg.io/))__
+See [this](https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/OverviewCoordinateReferenceSystems.pdf) cheatsheet.
 
 ```{r agrometAPIspatial, exercise=TRUE}
 # making it spatial
@@ -410,35 +412,37 @@ mydataset = sf::st_as_sf(mydataset,
 sf::st_crs(mydataset)
 ```
 
-### ADMIN BOUNDARIES
+### DOWNLOADING ADMIN BOUNDARIES
 
 > Many R libraries provide the ability to get admin boundaries. We use `rnaturalearth`
 
-1. Downloading Belgium admin bondaries 
 ```{r adminGet, exercise=TRUE}
 # downloading admin boundaries of Belgium
 belgium = sf::st_as_sf((rnaturalearth::ne_states(country = 'belgium')))
 # inspecting the data
 belgium
+# visualizin
+plot(belgium)
 ```
 
-2. Filtering to only keep Wallonia
+### FILTERING TO ONLY KEEP OUR INTEREST ZONE
+
+> Let's do it again with `dplyr`
 
 ```{r adminFilter, exercise=TRUE}
 # Filtering Wallonia data
 wallonia = belgium %>% dplyr::filter(region == "Walloon")
-
+# visualizing
+plot(wallonia)
 # Checking the Coordinate Reference system
 st_crs(wallonia)
 ```
 
-### ELEVATION DATA - DEM RASTER
+### DOWNLOADING ELEVATION DATA - DEM RASTER
 
 > Again, many libraries provide ways to download such data. We use `elevatr`
 
-1. Downloading data.
-
-Raster resolutioncontrolled by `z` param. See [package documentation](https://cran.r-project.org/web/packages/elevatr/vignettes/introduction_to_elevatr.html#get_raster_elevation_data)
+Raster resolution is controlled by `z` param. See [package documentation](https://cran.r-project.org/web/packages/elevatr/vignettes/introduction_to_elevatr.html#get_raster_elevation_data)
 
 ```{r elevationGet, exercise=TRUE}
 # downloading DEM data and storing it in an object. Z = 5 ==> about 3km² resolution
@@ -449,7 +453,9 @@ plot(elevation)
 raster::crs(elevation, asText = TRUE)
 ```
 
-2. Cropping with Wallonia borders
+### CROPPING WITH OUR INTEREST ZONE BORDERS
+
+> package `raster` has a function for this !
 
 ```{r elevationCrop, exercise=TRUE}
 # masking
@@ -462,53 +468,40 @@ plot(elevation)
 
 > Grid is quickly built with new `sf` library
 
-1. Reprojecting the extent of our interest zone from __geographic__ to __projected__ CRS. See [this](https://www.nceas.ucsb.edu/~frazier/RSpatialGuides/OverviewCoordinateReferenceSystems.pdf) cheatsheet.
-
-```{r gridTrans, exercise=TRUE}
-# projected for grid resolution defined in meters
-wallonia = sf::st_transform(wallonia, crs = 3812)
-```
-
-2. Building the grid
-
 ```{r gridBuild, exercise=TRUE}
 # building the grid at 5 km² resolution
-grid = sf::st_sf(sf::st_make_grid(x = wallonia,  cellsize = 5000, what = "centers"))
+grid = sf::st_sf(sf::st_make_grid(x = sf::st_transform(wallonia, crs = 3812),  cellsize = 5000, what = "centers"))
 # limit it to Wallonia and not full extent
-grid = sf::st_intersection(grid, wallonia)
+grid = sf::st_intersection(grid, sf::st_transform(wallonia, crs = 3812))
+# reproject it 
+grid = sf::st_transform(grid, crs = 4326)
 # visualizing 
 plot(grid)
 ```
 
-3. Projecting back to __geographic__ CRS
+### Extracting raster data at the locations of grid points
 
-```{r gridReproj, exercise=TRUE}
-grid = sf::st_transform(grid, crs = 4326)
-wallonia = sf::st_transform(grid, crs = 4326)
-```
-
-### FEEDING THE GRID WITH EXPLANATORY DATA
-
-> Injecting explanatory variables (limited to elevation for this example) in the grid. 
-
-1. Extracting raster data at the locations of grid points
+> Extracting explanatory variables (limited to elevation raster for this example). 
 
 ```{r feedingExtract, exercise=TRUE}
 # extracting
-extracted = raster::extract(
+extracted <- raster::extract(
   elevation,
   as(grid,"Spatial"),
   fun = mean,
-  na.rm = TRUE,
+  na.rm = FALSE,
   df = TRUE
 )
-# inspecting
-extracted
 # renaming columns
 colnames(extracted) = c("ID", "altitude")
+# inspecting
+extracted
 ```
 
-2. Injecting the extracted dataframe output into the grid
+### INJECTING INTO OUR GRID
+
+> Add the raster extracted data to our sf grid
+
 ```{r feedingInject, exercise=TRUE}
 # injecting
 grid$altitude = extracted$altitude
@@ -528,7 +521,7 @@ sf::st_crs(grid)
 
 > Making our spatial data intelligible by mapping it using `leaflet`
 
-1. preparing the color palettes and settings for mobile phone responsiveness
+#### preparing the color palettes and settings for mobile phone responsiveness
 
 ```{r, leafletSettings, exercise = TRUE}
 elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(elevation),
@@ -538,7 +531,7 @@ temperature.pal <- colorNumeric(reverse = TRUE, "RdBu", domain=mydataset$tsa,
 responsiveness = "\'<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\'"
 ```
 
-2. mapping the various datasets
+#### mapping the various datasets
 
 ```{r, leafletMap, exercise = TRUE}
 map <- leaflet() %>% 
@@ -561,9 +554,9 @@ map <- leaflet() %>%
     addCircleMarkers(
         data = grid,
         group = "Grid",
-        radius = 2,
-        color = "blue",
-        stroke = TRUE, fillOpacity = 1) %>%
+        radius = 1,
+        color = "orange",
+        stroke = FALSE, fillOpacity = 1) %>%
     addLegend(
       values = values(elevation), group = "Elevation",
       position = "bottomright", pal = elevation.pal,
@@ -803,3 +796,4 @@ You might also be interested in :
 * `thesisdown` : to author thesis with R + markdown
 * `blogdown` to author your jekyll/hugo glog with R + markdown
 * `bookdown` to author books with R + markdown
+
