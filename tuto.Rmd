@@ -42,9 +42,12 @@ library(agrometAPI)
 library(elevatr)
 library(rnaturalearth)
 library(rnaturalearthhires)
+library(kknn)
+library(DiceKriging)
+library(bst)
 
 # downloading data
-rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+rawdata = agrometAPI::get_data(user_token = "52a71385b68c101254944786aae44a7aa106ae1f", dfrom = (Sys.Date() - 1))
 rawdata = agrometAPI::type_data(rawdata)
 
 # filtering 
@@ -73,6 +76,7 @@ sf::st_crs(wallonia)
 
 # downloading DEM
 # for correspondance between zoom & res : https://mapzen.com/documentation/terrain-tiles/data-sources/#what-is-the-ground-resolution
+#load("elevation.RData")
 elevation = elevatr::get_elev_raster(as(wallonia, "Spatial"), z = 5, src = "aws")
 class(elevation)
 # checking CRS
@@ -173,9 +177,13 @@ ourTask = mlr::makeRegrTask(id = "FOSS4G_example", data = ourTask, target = "tsa
 head(mlr::getTaskData(ourTask))
 
 # Defining our learners
-ourLearners = mlr::makeLearners(
-  cls = c("regr.lm", "regr.fnn", "regr.nnet"),
-  ids = c("linearRegression", "Fast Nearest Neighbours", "Neural Network")
+ourLearners = list(
+  l1 = mlr::makeLearner(cl = "regr.lm", id = "linearRegression"),
+  l2 = mlr::makeLearner(cl = "regr.fnn", id = "FastNearestNeighbours"),
+  l3 = mlr::makeLearner(cl = "regr.nnet", id = "NeuralNetwork", par.vals = list(size = 10)),
+  l4 = mlr::makeLearner(cl = "regr.bst", id = "Gradient Boosting"),
+  l5 = mlr::makeLearner(cl = "regr.km", id = "Kriging"),
+  l6 = mlr::makeLearner(cl = "regr.kknn", id = "KNearestNeighborRegression")
 )
 
 # Defining our learners
@@ -200,6 +208,10 @@ plotBMRBoxplots(
   order.lrns = mlr::getBMRLearnerIds(ourbenchmark)) +
   aes(color = learner.id)
 
+best.learner = data.frame(performances %>% 
+    slice(which.min(rmse.test.rmse)))
+best.learner
+
 # extract the lon and lat from the sf geometry
 coords = data.frame(st_coordinates(grid))
 # attributing our original dataset to another var (to avoid overwriting)
@@ -213,7 +225,7 @@ ourPredictionGrid = dplyr::bind_cols(ourPredictionGrid, coords)
 
 # training the neural net on the dataset
 ourModel = mlr::train(
-  learner = mlr::getBMRLearners(bmr = ourbenchmark)[[1]],
+  learner = mlr::getBMRLearners(bmr = ourbenchmark)[[as.character(best.learner$learner.id)]],
   task = ourTask)
 
 # using our model to make the prediction
@@ -603,7 +615,7 @@ It is called supervised learning because the process of an algorithm learning fr
 
 ### MLR library
 
-[](https://mlr-org.github.io/mlr/reference/figures/logo_navbar.png)
+![](https://mlr-org.github.io/mlr/reference/figures/logo_navbar.png)
 [go to mlr website for full details](https://mlr-org.github.io/mlr/index.html)
 
 `mlr` is a `r fa("r-project")` library that offers a standardized interface for all its machine learning algorithms. 
@@ -638,10 +650,15 @@ head(mlr::getTaskData(ourTask))
 ### Defining our learners (learning algorithms)
 ```{r learnersMLR, exercise = TRUE}
 # Defining our learners
-ourLearners = mlr::makeLearners(
-  cls = c("regr.lm", "regr.fnn", "regr.nnet"),
-  ids = c("linearRegression", "Fast Nearest Neighbours", "Neural Network")
-)
+
+
+ourLearners = list(
+  l1 = mlr::makeLearner(cl = "regr.lm", id = "linearRegression"),
+  l2 = mlr::makeLearner(cl = "regr.fnn", id = "FastNearestNeighbours"),
+  l3 = mlr::makeLearner(cl = "regr.nnet", id = "NeuralNetwork", par.vals = list(size = 10)),
+  l4 = mlr::makeLearner(cl = "regr.bst", id = "Gradient Boosting"),
+  l5 = mlr::makeLearner(cl = "regr.km", id = "Kriging"),
+  l6 = mlr::makeLearner(cl = "regr.kknn", id = "KNearestNeighborRegression"))
 ```
 
 ### Defining our resampling strategy
@@ -665,6 +682,8 @@ ourbenchmark = mlr::benchmark(
 
 performances = mlr::getBMRAggrPerformances(bmr = ourbenchmark, as.df = TRUE)
 performances
+best.learner = data.frame(performances %>% 
+    slice(which.min(rmse.test.rmse)))
 
 # Vizualizing the benchamrk result
 library(ggplot2)
@@ -691,7 +710,7 @@ ourPredictionGrid = dplyr::bind_cols(ourPredictionGrid, coords)
 
 # training the neural net on the dataset
 ourModel = mlr::train(
-  learner = mlr::getBMRLearners(bmr = ourbenchmark)[[1]],
+  learner = mlr::getBMRLearners(bmr = ourbenchmark)[[as.character(best.learner$learner.id)]],
   task = ourTask)
 ```
 
@@ -774,6 +793,7 @@ Check my [curated list of free tools and datasets on my blog](https://pokyah.git
 
 ## ABOUT
 
+### COLOFON
 This presentation was built using `learnr`, a package to create your own interactive tutorials.
 
 As mentioned on to deploy it on [shinyapps.io](https://shiny.rstudio.com/articles/shinyapps.html), you need to have devtools >= 1.4
@@ -782,8 +802,9 @@ Reproduciblility is only assured by providing complete setup instructions and re
 
 * https://www.shinyproxy.io/deploying-apps/#run-shinyproxy
 * https://github.com/o2r-project/containerit/blob/master/vignettes/containerit.Rmd
-* https://www.shinyproxy.io/deploying-apps/
 * https://jlintusaari.github.io/2018/07/how-to-compile-rmarkdown-documents-using-docker/
+* http://tamaszilagyi.com/blog/dockerized-shiny-app-development/
+* http://nanx.me/liftr/
 
 
 devtools::install_github("hadley/devtools")
@@ -796,4 +817,7 @@ You might also be interested in :
 * `thesisdown` : to author thesis with R + markdown
 * `blogdown` to author your jekyll/hugo glog with R + markdown
 * `bookdown` to author books with R + markdown
+
+### DOWNLOAD
+
 
